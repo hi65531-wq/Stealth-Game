@@ -359,63 +359,106 @@ int main()
     levels[1] = makeLevel2();
 
     //menu
-    cout << "Welcome to Ultra-Spy" << endl;
-    cout << "Select a level: " << endl;
-
-    for (int i = 0; i < levelCount; i++)
+    bool running = true;
+    while(running)
     {
-        cout << i + 1 << ") " << levels[i].name << endl;
-    }
-    cout << ">";
+        int choice = -1;
 
-    string input;
-    cin >> input;
-    input = toLower(input);
-
-    int choice = 0;
-    if (input == "2" || toLower(levels[1].name) == input)
-    {
-        choice = 1;
-    }
-    Level &lvl = levels[choice];
-
-    //game loop
-    while(true)
-    {
-        draw(lvl);
-        if(playerSeen(lvl))
+        while (choice == -1)
         {
-            cout << "You were spotted!!!";
+            cout << "Welcome to Ultra Spy" << endl;
+            cout << "Select a Level: " << endl;
+
+            for (int i = 0; i < levelCount; i++)
+            {
+                cout << i + 1 << ") " << levels[i].name << endl;
+            }
+
+            cout << "3) Quit " << endl;
+            cout << "> ";
+
+            string input; 
+            getline(cin >> ws, input);
+            input = toLower(input);
+
+            for (int i = 0; i < levelCount; i++)
+            {
+                if (input == to_string(i + 1) || input == toLower(levels[i].name))
+                {
+                    choice = i;
+                }
+            }
+
+            if (input == "3" || input == "quit")
+            {
+                running = false;
+                break;
+            }
+
+            if (choice == -1)
+            {
+                cout << "Invalid choice. Try Again" << endl;
+            }
+        } 
+        if (!running)
+        {
             break;
-        }
+        }   
 
-        if(playerWon(lvl))
+        //game loop
+        Level &lvl = levels[choice];
+        while(true)
         {
-            cout << "Mission Complete!!!";
-            break;
-        }
+            draw(lvl);
+            if(playerSeen(lvl))
+            {
+                cout << "You were spotted!!!";
+                break;
+            }
 
-        cout << "Move(WASD): ";
-        char move;
-        cin >> move;
+            if(playerWon(lvl))
+            {
+                cout << "Mission Complete!!!";
+                break;
+            }
 
-        if (movePlayer(lvl, move))
-        {
+            cout << "Move(WASD): ";
+
+            string move;
+            getline(cin >> ws, move);
+            char m = tolower(move[0]);
+
+            if (!movePlayer(lvl, m))
+            {
+                continue;
+            }
+
             moveGuards(lvl);
+
+            if (playerSeen(lvl))
+            {
+                draw(lvl);
+                cout << "You've been Caught!";
+                break;
+            }
+
+            if (playerWon(lvl))
+            {
+                draw(lvl);
+                cout << "Mission Complete!!!";
+                break;
+            }
         }
 
-        if (playerSeen(lvl))
-        {
-            draw(lvl);
-            cout << "You've been Caught!";
-            break;
-        }
+        //play again
+        cout << "Play Again? (y/n): ";
+        string again;
+        getline(cin >> ws, again);
+        again = toLower(again);
 
-        if (playerWon(lvl))
+        if (again != "y")
         {
-            draw(lvl);
-            cout << "Mission Complete!!!";
-            break;
+            running = false;
         }
     }
 
