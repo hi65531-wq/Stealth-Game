@@ -4,6 +4,7 @@
 #include<iostream>
 #include<string>
 #include<cctype>
+#include<sstream>
 using namespace std;
 
 //storing row and coloum positions 
@@ -271,13 +272,8 @@ bool movePlayer(Level &lvl, char input)
 }
 
 //checking for a wall 
-bool vision(Level &lvl, int r, int c, int dr, int dc, int range)
+bool vision(Level &lvl, int r, int c, int dr, int dc)
 {
-    if (range == 0)
-    {
-        return false;
-    }
-
     if (r < 0 || r >= lvl.rows || c < 0 || c >= lvl.cols)
     {
         return false; 
@@ -293,12 +289,21 @@ bool vision(Level &lvl, int r, int c, int dr, int dc, int range)
         return false;
     }
 
+    for (int i = 0; i < lvl.guardCount; i++)
+    {
+        if (lvl.guards[i].r == r &&
+            lvl.guards[i].c == c)
+        {
+            return false;
+        }
+    }
+
     if (lvl.player.r == r && lvl.player.c == c)
     {
         return true;
     }
 
-    return vision(lvl, r + dr, c + dc, dr, dc, range -1);
+    return vision(lvl, r + dr, c + dc, dr, dc);
 }
 
 //whether the guard is seeing the player 
@@ -310,17 +315,17 @@ bool guardSees(Level &lvl, int i)
 
     if (d == '^')
     {
-        return vision(lvl, r -1, c, -1, 0, 3);
+        return vision(lvl, r -1, c, -1, 0);
     }
     if (d == 'v')
     {
-        return vision(lvl, r + 1, c, 1, 0, 3);
+        return vision(lvl, r + 1, c, 1, 0);
     }
     if (d == '<')
     {
-        return vision(lvl, r, c -1, 0, -1, 3);
+        return vision(lvl, r, c -1, 0, -1);
     }
-    return vision(lvl, r, c + 1, 0, 1, 3);
+    return vision(lvl, r, c + 1, 0, 1);
 }
 
 //checking every guard to see if they see the player
@@ -609,7 +614,7 @@ Level makeLevel3()
     lvl.guards[0] = {1, 3};
     lvl.guardDirection[0] = '>';
     lvl.guardPatrol[0] = true;
-    lvl.guards[1] = {6, 1};
+    lvl.guards[1] = {6, 5};
     lvl.guardDirection[1] = '>';
     lvl.guardPatrol[1] = false;
 
@@ -687,9 +692,30 @@ Level makeLevel4()
 //ispect the levels and tell info about it and other parts of it
 void inspect(Level &lvl)
 {
-    int row; int col;
-    cout << "Enter row and column: ";
-    cin >> row >> col;
+    cout << "Enter row and column. (2 4 or 2,4): ";
+
+    string input;
+    getline(cin >> ws, input);
+
+    for (char &c : input)
+    {
+        if (c == ',')
+        {
+            c = ' ';
+        }
+    }
+
+    stringstream parser(input);
+    int row; 
+    int col;
+    char extra;
+
+    if (!(parser >> row >> col) || parser >> extra)
+    {
+        cout << "Invalid coordinates. Enter two numbers(2 4 or 2,4.)" << endl;
+        return;
+    }
+    
 
     if (row < 0 || row >= lvl.rows || col < 0 || col >= lvl.cols)
     {
