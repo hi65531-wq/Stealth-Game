@@ -5,6 +5,8 @@
 #include<string>
 #include<cctype>
 #include<sstream>
+#include<fstream>
+#include<limits>
 using namespace std;
 
 //storing row and coloum positions 
@@ -49,6 +51,9 @@ struct Level
     int switchCount;
 };
 
+void inspect(Level &lvl);
+void deleteLevel(Level &lvl);
+
 //creating the map
 char ** createMap(int rows, int cols)
 {
@@ -78,6 +83,35 @@ string toLower(string s)
         c = tolower(c);
     }
     return s;
+}
+
+bool validPosition(Level &lvl, int row, int col)
+{
+    return row >= 0 && row < lvl.rows && col >= 0 && col < lvl.cols;
+}
+
+bool validDirection(char direction)
+{
+    return direction == '^' ||
+           direction == 'v' ||
+           direction == '<' ||
+           direction == '>';
+}
+
+string addLevelExten(string filename)
+{
+    if (filename.length() < 4)
+    {
+        return filename + ".lvl";
+    }
+
+    string ending = filename.substr(filename.length() - 4);
+    if (toLower(ending) != ".lvl")
+    {
+        filename += ".lvl";
+    }
+
+    return filename;
 }
 
 //which character is a wall
@@ -112,6 +146,107 @@ int switchAt(Level &lvl, int row, int col)
     return -1;
 }
 
+void addGuard(Level &lvl, int row, int col, char direction, bool patrol)
+{
+    Position *newGuards = new Position[lvl.guardCount + 1];
+    char *newDirections = new char[lvl.guardCount + 1];
+    bool *newPatrol = new bool[lvl.guardCount + 1];
+
+    for (int i = 0; i < lvl.guardCount; i++)
+    {
+        newGuards[i] = lvl.guards[i];
+        newDirections[i] = lvl.guardDirection[i];
+        newPatrol[i] = lvl.guardPatrol[i];
+    }
+
+    newGuards[lvl.guardCount] = {row, col};
+    newDirections[lvl.guardCount] = direction;
+    newPatrol[lvl.guardCount] = patrol;
+
+    delete[] lvl.guards;
+    delete[] lvl.guardDirection;
+    delete[] lvl.guardPatrol;
+
+    lvl.guards = newGuards;
+    lvl.guardDirection = newDirections;
+    lvl.guardPatrol = newPatrol;
+    lvl.guardCount++;
+}
+
+void addDoor(Level &lvl, int row, int col, int group)
+{
+    Door *newDoors = new Door[lvl.doorCount + 1];
+
+    for (int i = 0; i < lvl.doorCount; i++)
+    {
+        newDoors[i] = lvl.doors[i];
+    }
+
+    newDoors[lvl.doorCount].pos = {row, col};
+    newDoors[lvl.doorCount].group = group;
+    newDoors[lvl.doorCount].open = false;
+
+    delete[] lvl.doors;
+
+    lvl.doors = newDoors;
+    lvl.doorCount++;
+}
+
+void addSwitch(Level &lvl, int row, int col, int group)
+{
+    Switch *newSwitches = new Switch[lvl.switchCount + 1];
+
+    for (int i = 0; i < lvl.switchCount; i++)
+    {
+        newSwitches[i] = lvl.switches[i];
+    }
+
+    newSwitches[lvl.switchCount].pos = {row, col};
+    newSwitches[lvl.switchCount].group = group;
+
+    delete[] lvl.switches;
+
+    lvl.switches = newSwitches;
+    lvl.switchCount++;
+}
+
+bool editorPosOccupied(Level &lvl, int row, int col)
+{
+    if (lvl.player.r == row && lvl.player.c == col)
+    {
+        return true;
+    }
+
+    if (lvl.goal.r == row && lvl.goal.c == col)
+    {
+        return true;
+    }
+
+    for (int i = 0; i < lvl.guardCount; i++)
+    {
+        if (lvl.guards [i].r == row && lvl.guards[i].c == col)
+        {
+            return true;
+        }
+    }
+
+    if (doorAt(lvl, row , col) != -1)
+    {
+        return true;
+    }
+
+    if (switchAt(lvl, row, col) != -1)
+    {
+        return true;
+    }
+
+    if (isWall(lvl.map[row][col]))
+    {
+        return true;
+    }
+
+    return false;
+}
 //door being closed 
 bool closedDoor(Level &lvl, int row, int col)
 {
@@ -689,6 +824,466 @@ Level makeLevel4()
     return lvl; 
 } 
 
+Level blankLevel()
+{
+    Level lvl;
+
+    cout << "Enter Level name: ";
+    getline(cin >> ws, lvl.name);
+
+    while (lvl.name.empty())
+    {
+        cout << "The level must have a name: ";
+        getline(cin, lvl.name);
+    }
+
+    while (true)
+    {
+        cout << "Enter number of rows: ";
+        string input;
+        getline(cin >> ws, input);
+        stringstream parser(input);
+        char extra;
+
+        if (parser >> lvl.rows && !(parser >> extra) && lvl.rows >= 3 && lvl.rows <= 30)
+        {
+            break;
+        }
+
+        cout << "Enter a whole number (3-30)." << endl;
+    }
+
+    while (true)
+    {
+        cout << "Enter number of columns: ";
+        string input;
+        getline(cin >> ws, input);
+        stringstream parser(input);
+        char extra;
+
+        if (parser >> lvl.cols && !(parser >> extra) && lvl.cols >= 3 && lvl.cols <= 30)
+        {
+            break;
+        }
+
+        cout << "Enter a whole number (3-30)." << endl;
+    }
+
+    lvl.map = createMap(lvl.rows, lvl.cols);
+
+    for (int r = 0; r < lvl.rows; r++)
+    {
+        for (int c = 0; c < lvl.cols; c++)
+        {
+            lvl.map[r][c] = ' ';
+        }
+    }
+
+    for (int r = 0; r < lvl.rows; r++)
+    {
+        lvl.map[r][0] = '#';
+        lvl.map[r][lvl.cols - 1] = '#';
+    }
+
+    for (int c = 0; c < lvl.cols; c++)
+    {
+        lvl.map[0][c] = '#';
+        lvl.map[lvl.rows - 1][c] = '#';
+    }
+
+    lvl.player = {-1, -1};
+    lvl.goal = {-1, -1};
+    lvl.guardCount = 0;
+    lvl.guards = nullptr;
+    lvl.guardDirection = nullptr;
+    lvl.guardPatrol = nullptr;
+    lvl.doorCount = 0;
+    lvl.doors = nullptr;
+    lvl.switchCount = 0;
+    lvl.switches = nullptr;
+    return lvl;
+}
+
+void drawEditor(Level &lvl)
+{
+    cout << "Level: " << lvl.name << endl;
+    cout << "   ";
+
+    for (int c = 0; c < lvl.cols; c++)
+    {
+        cout << c % 10;
+    }
+    cout << endl;
+
+    for (int r = 0; r < lvl.rows; r++)
+    {
+        if (r < 10)
+        {
+            cout << "  " << r << " ";
+        }
+        else
+        {
+            cout << " " << r << " ";
+        }
+
+        for (int c = 0; c < lvl.cols; c++)
+        {
+            bool printed = false;
+
+            if (lvl.player.r == r && lvl.player.c == c)
+            {
+                cout << "@";
+                continue;
+            }
+
+            if (lvl.goal.r == r && lvl.goal.c == c)
+            {
+                cout << "$";
+                continue;
+            }
+
+            for (int i = 0; i < lvl.guardCount; i++)
+            {
+                if (lvl.guards[i].r == r && lvl.guards[i].c == c)
+                {
+                    cout << lvl.guardDirection[i];
+                    printed = true;
+                    break;
+                }
+            }
+
+            if (!printed)
+            {
+                int doorIndex = doorAt(lvl, r, c);
+
+                if (doorIndex != -1)
+                {
+                    cout << 'D';
+                    printed = true;
+                }
+            }
+            
+            if (!printed)
+            {
+                int switchIndex = switchAt(lvl, r, c);
+
+                if (switchIndex != -1)
+                {
+                    cout << 'S';
+                    printed = true;
+                }
+            }
+
+            if (!printed)
+            {
+                cout << lvl.map[r][c];
+            }
+        }
+        cout << endl;
+    }
+}
+
+bool getEditorCoord(Level &lvl, int &row, int &col)
+{
+    cout << "Enter row and column: ";
+    string input;
+    getline(cin >> ws, input);
+
+    for (char &c : input)
+    {
+        if (c == ',')
+        {
+            c = ' ';
+        }
+    }
+
+    stringstream parser(input);
+    char extra;
+
+    if (!(parser >> row >> col) || parser >> extra)
+    {
+        cout << "Enter two numbers such as 2 4." << endl;
+        return false;
+    }
+
+    if (!validPosition(lvl, row, col))
+    {
+        cout << "That position is ouside the level." << endl;
+        return false;
+    }
+    return true;
+}
+
+void eraseEditorPos(Level &lvl, int row, int col)
+{
+    if (lvl.player.r == row && lvl.player.c == col)
+    {
+        lvl.player = {-1, -1};
+    }
+
+    if (lvl.goal.r == row && lvl.goal.c == col)
+    {
+        lvl.goal = {-1, -1};
+    }
+
+    for (int i = 0; i < lvl.guardCount; i++)
+    {
+        if (lvl.guards[i].r == row && lvl.guards[i].c == col)
+        {
+            for (int j = i; j < lvl.guardCount -1; j++)
+            {
+                lvl.guards[j] = lvl.guards[j + 1];
+                lvl.guardDirection[j] = lvl.guardDirection[j + 1];
+                lvl.guardPatrol[j] = lvl.guardPatrol[j + 1];
+            }
+
+            lvl.guardCount--;
+            break;
+        }
+    }
+
+    int doorIndex = doorAt(lvl, row, col);
+    
+    if (doorIndex != -1)
+    {
+        for (int i = doorIndex; i < lvl.doorCount - 1; i++)
+        {
+            lvl.doors[i] = lvl.doors[i + 1];
+        }
+
+        lvl.doorCount--;
+    }
+
+    int switchIndex = switchAt(lvl, row , col);
+
+    if (switchIndex != -1)
+    {
+        for (int i = switchIndex; i < lvl.switchCount - 1; i++)
+        {
+            lvl.switches[i] = lvl.switches[i + 1];
+        }
+
+        lvl.switchCount--;
+    }
+    lvl.map[row][col] = ' ';
+}
+
+bool saveLevel(Level &lvl)
+{
+    string filename = addLevelExten(lvl.name);
+    ofstream file(filename);
+
+    if (!file)
+    {
+        cout << "Could not create this file." << endl;
+        return false;
+    }
+
+    file << lvl.name << endl;
+    file << lvl.rows << " " << lvl.cols << endl;
+    file << "MAP" << endl;
+
+    for (int r = 0; r < lvl.rows; r++)
+    {
+        for (int c = 0; c < lvl.cols; c++)
+        {
+            file << lvl.map[r][c];
+        }
+        file << endl;
+    }
+
+    file << "PLAYER " << lvl.player.r << " " << lvl.player.c << endl;
+    file << "GOAL " << lvl.goal.r << " " << lvl.goal.c << endl;
+
+    for (int i = 0; i < lvl.guardCount; i++)
+    {
+        file << "GUARD " << lvl.guards[i].r << " " 
+                         << lvl.guards[i].c << " "
+                         << lvl.guardDirection[i] << " "
+                         << lvl.guardPatrol[i] << endl;
+    }
+
+    for (int i = 0; i < lvl.doorCount; i++)
+    {
+        file << "DOOR " << lvl.doors[i].pos.r << " "
+                        << lvl.doors[i].pos.c << " "
+                        << lvl.doors[i].group << " "
+                        << lvl.doors[i].open << endl;
+    }
+
+    for (int i = 0; i < lvl.switchCount; i++)
+    {
+        file << "SWITCH " << lvl.switches[i].pos.r << " "
+                          << lvl.switches[i].pos.c << " "
+                          << lvl.switches[i].group << endl;
+    }
+
+    file.close();
+    cout << "Level saved as " << filename << endl;
+
+    return true;
+}
+
+bool editLevel(Level &lvl) 
+{ 
+    while (true) 
+    { 
+        drawEditor(lvl); 
+        cout << "Editor Objects" << endl; 
+        cout << "1) Wall" << endl; 
+        cout << "2) Player" << endl; 
+        cout << "3) Goal" << endl; 
+        cout << "4) Normal Guard" << endl; 
+        cout << "5) Patrol Guard" << endl; 
+        cout << "6) Door" << endl; 
+        cout << "7) Switch" << endl; 
+        cout << "8) Empty / Erase" << endl; 
+        cout << "9) Inspect" << endl; 
+        cout << "10) Save and Quit" << endl; 
+        cout << "> "; 
+
+        string input; 
+        getline(cin >> ws, input); 
+        stringstream parser(input); 
+        int choice; 
+        char extra; 
+
+        if (!(parser >> choice) || parser >> extra || choice < 1 || choice > 10) 
+        { 
+            cout << "Enter a number from 1 through 10." << endl; 
+            continue; 
+        } 
+
+        if (choice == 9) 
+        { 
+            inspect(lvl); 
+            continue; 
+        } 
+
+        if (choice == 10) 
+        { 
+            if (lvl.player.r == -1) 
+            { 
+                cout << "Place a player before saving." << endl; 
+                continue; 
+            } 
+
+            if (lvl.goal.r == -1) 
+            { 
+                cout << "Place a goal before saving." << endl; 
+                continue; 
+            } 
+            return saveLevel(lvl); 
+        } 
+
+        int row; 
+        int col; 
+
+        if (!getEditorCoord(lvl, row, col)) 
+        { 
+            continue; 
+        } 
+  
+        if (choice == 8) 
+        { 
+            if (row == 0 || row == lvl.rows - 1 ||
+                col == 0 || col == lvl.cols - 1)
+            {
+                cout << "Border walls cannot be erased." << endl;
+                continue;
+            }
+
+            eraseEditorPos(lvl, row, col);
+            continue;
+        } 
+
+        if (editorPosOccupied(lvl, row, col)) 
+        { 
+            cout << "That tile already contains an object." << endl; 
+            continue; 
+        } 
+
+        if (choice == 1) 
+        { 
+            lvl.map[row][col] = '#'; 
+        } 
+        else if (choice == 2) 
+        { 
+            // Only one player is allowed. 
+            lvl.player = {row, col}; 
+        } 
+        else if (choice == 3) 
+        { 
+            // Only one goal is allowed. 
+            lvl.goal = {row, col}; 
+        } 
+        else if (choice == 4 || choice == 5) 
+        { 
+            char direction; 
+            while (true) 
+            { 
+                cout << "Direction (^ v < >): "; 
+                string directionInput; 
+                getline(cin >> ws, directionInput); 
+
+                if (directionInput.length() == 1 && validDirection(directionInput[0])) 
+                { 
+                    direction = directionInput[0]; 
+                    break; 
+                } 
+                cout << "Enter ^, v, <, or >." << endl; 
+            } 
+
+            bool patrol = choice == 5; 
+            addGuard(lvl, row, col, direction, patrol); 
+        } 
+        else if (choice == 6) 
+        { 
+            int group; 
+
+            while (true) 
+            { 
+                cout << "Door group number: "; 
+                string groupInput; 
+                getline(cin >> ws, groupInput); 
+
+                stringstream groupParser(groupInput); 
+                char groupExtra; 
+
+                if (groupParser >> group && !(groupParser >> groupExtra) && group >= 0) 
+                { 
+                    break; 
+                } 
+
+                cout << "Enter a non-negative whole number." << endl; 
+            } 
+
+            addDoor(lvl, row, col, group); 
+        } 
+        else if (choice == 7) 
+        { 
+            int group; 
+            while (true) 
+            { 
+                cout << "Switch group number: "; 
+                string groupInput; 
+                getline(cin >> ws, groupInput); 
+
+                stringstream groupParser(groupInput); 
+                char groupExtra; 
+
+                if (groupParser >> group && !(groupParser >> groupExtra) && group >= 0) 
+                { 
+                    break; 
+                } 
+
+                cout << "Enter a non-negative whole number." << endl; 
+            } 
+            addSwitch(lvl, row, col, group); 
+        } 
+    } 
+} 
+
 //ispect the levels and tell info about it and other parts of it
 void inspect(Level &lvl)
 {
@@ -788,6 +1383,151 @@ void inspect(Level &lvl)
     cout << "Empty floor tile." << endl;
 }
 
+bool loadLevel(string filename, Level &lvl) 
+{ 
+    filename = addLevelExten(filename); 
+    ifstream file(filename); 
+    if (!file) 
+    { 
+        cout << "Could not open " << filename << endl; 
+        return false; 
+    } 
+
+    Level loaded; 
+    getline(file, loaded.name); 
+    if (!(file >> loaded.rows >> loaded.cols)) 
+    { 
+        cout << "Invalid level dimensions." << endl; 
+        return false; 
+    } 
+
+    string marker; 
+    file >> marker; 
+    file.ignore(numeric_limits<streamsize>::max(), '\n'); 
+   
+    if (marker != "MAP") 
+    { 
+        cout << "Invalid level file." << endl; 
+        return false; 
+    } 
+
+    loaded.map = createMap(loaded.rows, loaded.cols); 
+    string mapRow; 
+
+    for (int r = 0; r < loaded.rows; r++) 
+    { 
+        getline(file, mapRow); 
+        if ((int)mapRow.length() != loaded.cols) 
+        { 
+            cout << "Invalid map row." << endl; 
+            deleteMap(loaded.map, loaded.rows); 
+            return false; 
+        } 
+
+        for (int c = 0; c < loaded.cols; c++) 
+        { 
+            loaded.map[r][c] = mapRow[c]; 
+        } 
+    } 
+
+    loaded.player = {-1, -1}; 
+    loaded.goal = {-1, -1}; 
+    loaded.guardCount = 0; 
+    loaded.guards = nullptr; 
+    loaded.guardDirection = nullptr; 
+    loaded.guardPatrol = nullptr; 
+    loaded.doorCount = 0; 
+    loaded.doors = nullptr; 
+    loaded.switchCount = 0; 
+    loaded.switches = nullptr; 
+    string line; 
+
+    while (getline(file, line)) 
+    { 
+        if (line.empty()) 
+        { 
+            continue; 
+        } 
+
+        stringstream parser(line); 
+        string type; 
+        parser >> type; 
+
+        if (type == "PLAYER") 
+        { 
+            parser >> loaded.player.r >> loaded.player.c; 
+        } 
+        else if (type == "GOAL") 
+        { 
+            parser >> loaded.goal.r  >> loaded.goal.c; 
+        } 
+        else if (type == "GUARD") 
+        { 
+            int row; 
+            int col; 
+            char direction; 
+            bool patrol; 
+            if (!(parser >> row >> col >> direction >> patrol)) 
+            { 
+                deleteLevel(loaded); 
+                cout << "Invalid guard data." << endl; 
+                return false; 
+            } 
+            addGuard(loaded, row, col, direction, patrol);  
+        } 
+        else if (type == "DOOR") 
+        { 
+            int row; 
+            int col; 
+            int group; 
+            bool open; 
+
+            if (!(parser >> row >> col >> group >> open)) 
+            { 
+                deleteLevel(loaded); 
+                cout << "Invalid door data."  << endl; 
+                return false; 
+            } 
+
+            addDoor(loaded, row, col, group); 
+            loaded.doors[ loaded.doorCount - 1].open = open; 
+        } 
+        else if (type == "SWITCH") 
+        { 
+            int row; 
+            int col; 
+            int group; 
+  
+            if (!(parser >> row >> col >> group)) 
+            { 
+                deleteLevel(loaded); 
+                cout << "Invalid switch data." << endl; 
+                return false; 
+            } 
+
+            addSwitch(loaded, row, col, group); 
+
+        } 
+        else 
+        { 
+            deleteLevel(loaded); 
+            cout << "Unknown level object: " << type << endl; 
+            return false; 
+        } 
+    } 
+
+    if (loaded.player.r == -1 || loaded.goal.r == -1) 
+    { 
+        deleteLevel(loaded); 
+        cout << "The level needs a player and goal." << endl; 
+        return false; 
+    } 
+
+    lvl = loaded; 
+    cout << "Loaded level: " << lvl.name << endl; 
+    return true; 
+} 
+
 //deleting the levels for space 
 void deleteLevel(Level &lvl)
 {
@@ -799,6 +1539,22 @@ void deleteLevel(Level &lvl)
     delete[] lvl.switches;
 }
 
+void addLevels(Level *&levels, int &levelCount, Level newLevel)
+{
+    Level *newLevels = new Level[levelCount + 1];
+
+    for (int i = 0; i < levelCount; i++)
+    {
+        newLevels[i] = levels[i];
+    }
+
+    newLevels[levelCount] = newLevel;
+
+    delete[] levels;
+
+    levels = newLevels;
+    levelCount++;
+}
 //the main function
 int main()
 {
@@ -825,7 +1581,13 @@ int main()
                 cout << i + 1 << ") " << levels[i].name << endl;
             }
 
-            cout << "5) Quit " << endl;
+            int createChoice = levelCount + 1;
+            int loadChoice = levelCount + 2;
+            int quitChoice = levelCount + 3;
+            
+            cout << createChoice << ") Create New Level" << endl;
+            cout << loadChoice << ") Load Level from File" << endl;
+            cout << quitChoice << ") Quit" << endl;
             cout << "> ";
 
             string input; 
@@ -840,7 +1602,42 @@ int main()
                 }
             }
 
-            if (input == "5" || input == "quit")
+            if (input == to_string(createChoice) || input == "create" || input == "create new level")
+            {
+                Level newLevel = blankLevel();
+
+                if (editLevel(newLevel))
+                {
+                    addLevels(levels, levelCount, newLevel);
+                }
+                else
+                {
+                    deleteLevel(newLevel);
+                }
+
+                choice = -2;
+                break;
+            }
+
+            if (input == to_string(loadChoice) || input == "load" || input == "load level")
+            {
+                cout << "Enter level filename: ";
+
+                string filename;
+                getline(cin >> ws, filename);
+
+                Level loadedLevel;
+
+                if (loadLevel(filename, loadedLevel))
+                {
+                    addLevels(levels, levelCount, loadedLevel);
+                }
+
+                choice = -2;
+                break;
+            }
+
+            if (input == to_string(quitChoice) || input == "quit")
             {
                 running = false;
                 break;
@@ -856,24 +1653,51 @@ int main()
             break;
         }   
 
+        if (choice == -2)
+        {
+            continue;
+        }
+
         //game loop
-        deleteLevel(levels[choice]);
-        if (choice == 0)
+        if (choice >= 0 && choice <= 3)
         {
-            levels[choice] = makeLevel1();
+            deleteLevel(levels[choice]);
+
+            if (choice == 0)
+            {
+                levels[choice] = makeLevel1();
+            }
+            else if (choice == 1)
+            {
+                levels[choice] = makeLevel2();
+            }
+            else if (choice == 2)
+            {
+                levels[choice] = makeLevel3();
+            }
+            else if (choice == 3)
+            {
+                levels[choice] = makeLevel4();
+            }
         }
-        else if (choice == 1)
+        else
         {
-            levels[choice] = makeLevel2();
+            string filename = levels[choice].name;
+
+            Level resetLevel;
+
+            if (loadLevel(filename, resetLevel))
+            {
+                deleteLevel(levels[choice]);
+                levels[choice] = resetLevel;
+            }
+            else
+            {
+                cout << "Could not reset this level." << endl;
+                continue;
+            }
         }
-        else if (choice == 2)
-        {
-            levels[choice] = makeLevel3();
-        }
-        else if (choice == 3)
-        {
-            levels[choice] = makeLevel4();
-        }
+
         Level &lvl = levels[choice];
 
         while(true)
